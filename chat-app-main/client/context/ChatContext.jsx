@@ -65,30 +65,40 @@ export const ChatProvider = ({children}) => {
 
     // 4. Real-time message and seen-status sync (private, later extend for group)
     const subscribeToMessages = async () => {
-        if(!socket) return;
-        // On new message received
-        socket.on("newMessage", (newMessage) => {
-            if(selectedUser && newMessage.senderId === selectedUser._id){
-                newMessage.seen = true;
-                setMessages((prevMessages)=> [...prevMessages,newMessage]);
-                axios.put(`/api/messages/mark/${newMessage._id}`);
-            } else {
-                setUnseenMessages((prevUnseenMessages)=>({
-                    ...prevUnseenMessages,
-                    [newMessage.senderId]: prevUnseenMessages[newMessage.senderId] ? prevUnseenMessages[newMessage.senderId]+1 : 1
-                }))
-            }
-        });
+    if (!socket) return;
 
-        // On real-time update for seen/read receipts
-        socket.on("messagesSeen", ({ by }) => {
-            setMessages(prev =>
-                prev.map(msg =>
-                    msg.receiverId === by ? { ...msg, seen: true } : msg
-                )
-            );
-        });
-    }
+    socket.on("newMessage", (newMessage) => {
+        // Show new message if current chat is with this user (either sender or receiver)
+        if (
+            selectedUser &&
+            (newMessage.senderId === selectedUser._id || newMessage.receiverId === selectedUser._id)
+        ) {
+            setMessages(prevMessages => [...prevMessages, newMessage]);
+            // Only mark as seen if YOU are the receiver
+            if (newMessage.senderId === selectedUser._id) {
+                axios.put(`/api/messages/mark/${newMessage._id}`);
+            }
+        } else {
+            // If not in current chat, bump unseen count
+            setUnseenMessages(prevUnseenMessages => ({
+                ...prevUnseenMessages,
+                [newMessage.senderId]: prevUnseenMessages[newMessage.senderId]
+                    ? prevUnseenMessages[newMessage.senderId] + 1
+                    : 1
+            }));
+        }
+    });
+
+    // On real-time update for seen/read receipts
+    socket.on("messagesSeen", ({ by }) => {
+        setMessages(prev =>
+            prev.map(msg =>
+                msg.receiverId === by ? { ...msg, seen: true } : msg
+            )
+        );
+    });
+};
+
 
     // 5. Unsubscribe from sockets on cleanup
     const unsubscribeFromMessages = () => {
